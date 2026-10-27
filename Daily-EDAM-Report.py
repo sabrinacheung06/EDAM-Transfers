@@ -55,7 +55,7 @@ def process_day(date_obj):
         for i, val in enumerate(row["Value"]):
             rows.append({
                 "date": date_obj.strftime("%m/%d/%Y"),
-                "HE": i + 1,
+                "he": i + 1,
                 "product": row["product"],
                 "ba": row["BA"],
                 "value": val
