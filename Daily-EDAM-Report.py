@@ -53,12 +53,16 @@ def process_day(date_obj):
     rows = []
     for _, row in df.iterrows():
         for i, val in enumerate(row["Value"]):
+            try:
+                numeric_val = float(val)
+            except (ValueError, TypeError):
+                continue
             rows.append({
                 "date": date_obj.strftime("%m/%d/%Y"),
                 "he": i + 1,
                 "product": row["product"],
                 "ba": row["BA"],
-                "value": val
+                "value": numeric_val
             })
 
     return pd.DataFrame(rows)
