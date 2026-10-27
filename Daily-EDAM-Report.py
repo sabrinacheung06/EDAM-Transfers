@@ -57,7 +57,7 @@ def process_day(date_obj):
                 "date": date_obj.strftime("%m/%d/%Y"),
                 "HE": i + 1,
                 "product": row["product"],
-                "BA": row["BA"],
+                "ba": row["BA"],
                 "value": val
             })
 
