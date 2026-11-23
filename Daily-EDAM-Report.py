@@ -1,6 +1,6 @@
 '''
 This script pulls data off of caiso.com/documents/daily-extended-day-ahead-market-edam-report. 
-A data range can be specified to generate an excel spreadsheet of transfers per hour end per each region.
+Each run scrapes the past 7 days and merges them into monthly CSVs at data/YYYY-MM.csv.
 '''
 
 # ---------------- Imports ----------------------- #
@@ -10,14 +10,28 @@ import pandas as pd
 import ast
 import os
 from datetime import datetime, timedelta
-from supabase import create_client, Client
 
-# ---------------- Supabase ----------------------- #
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# ---------------- Output ----------------------- #
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+KEY_COLS = ["date", "he", "product", "ba"]
 
 # ---------------- Functions ----------------------- #
+def save_monthly(df):
+    '''Merge rows into data/YYYY-MM.csv files, one per month. Re-scraped rows replace older ones.'''
+    os.makedirs(DATA_DIR, exist_ok=True)
+    df = df.copy()
+    df["date"] = pd.to_datetime(df["date"], format="%m/%d/%Y")
+
+    for month, month_df in df.groupby(df["date"].dt.to_period("M")):
+        path = os.path.join(DATA_DIR, f"{month}.csv")
+        if os.path.exists(path):
+            existing = pd.read_csv(path, parse_dates=["date"])
+            month_df = pd.concat([existing, month_df], ignore_index=True)
+        month_df = (month_df.drop_duplicates(subset=KEY_COLS, keep="last")
+                            .sort_values(["date", "ba", "product", "he"]))
+        month_df.to_csv(path, index=False, date_format="%Y-%m-%d")
+        print(f"Wrote {len(month_df)} rows to {path}")
+
 def process_day(date_obj):
     # Retrieve information from CAISO website on Transfers Bar Charts
     url_date = date_obj.strftime("%b-%d-%Y").lower()
@@ -68,35 +82,30 @@ def process_day(date_obj):
     return pd.DataFrame(rows)
 
 # ---------------- Script Start ----------------------- #
- 
-end_date = datetime.now().date() - timedelta(days=1)
-start_date = end_date - timedelta(days=6)
+if __name__ == "__main__":
 
-print(f"Scraping EDAM data from {start_date} to {end_date}...")
+    end_date = datetime.now().date() - timedelta(days=1)
+    start_date = end_date - timedelta(days=6)
 
-all_days = []
+    print(f"Scraping EDAM data from {start_date} to {end_date}...")
 
-current = start_date
-while current <= end_date:
-    try:
-        day_df = process_day(current)
-        
-        if not day_df.empty:
-            all_days.append(day_df)
-    except Exception as e:
-        print(f"Skipping {current}: {e}")
-    
-    current += timedelta(days=1)
+    all_days = []
 
-if all_days:
-    final_df = pd.concat(all_days, ignore_index=True)
-    records = final_df.to_dict(orient="records")
-    response = supabase.table("edam_transfers").upsert(
-        records, 
-        on_conflict="date,he,product,ba"
-    ).execute()
-    
-    print(f"Successfully synced {len(records)} records to Supabase!")
-else:
-    print("No data collected for this period.")
+    current = start_date
+    while current <= end_date:
+        try:
+            day_df = process_day(current)
 
+            if not day_df.empty:
+                all_days.append(day_df)
+        except Exception as e:
+            print(f"Skipping {current}: {e}")
+
+        current += timedelta(days=1)
+
+    if all_days:
+        final_df = pd.concat(all_days, ignore_index=True)
+        save_monthly(final_df)
+        print(f"Successfully saved {len(final_df)} scraped records!")
+    else:
+        print("No data collected for this period.")
