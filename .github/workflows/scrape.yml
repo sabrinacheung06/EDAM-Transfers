@@ -6,8 +6,11 @@ on:
     - cron: '0 6 * * 1'
   workflow_dispatch: # Allows manual trigger from GitHub UI
 
+permissions:
+  contents: write # Needed to commit the updated CSVs back to the repo
+
 jobs:
-  scrape-and-sync:
+  scrape-and-save:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -20,11 +23,20 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests pandas supabase
+          pip install requests pandas
 
       - name: Run Scraper Script
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
           python Daily-EDAM-Report.py
+
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No data changes to commit."
+          else
+            git commit -m "Weekly EDAM data update $(date -u +%Y-%m-%d)"
+            git push
+          fi
